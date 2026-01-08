@@ -6,12 +6,17 @@ export type Profile = {
   created_at: string
 }
 
+export type PayoutTrigger = 'deadline' | 'target' | 'all_paid' | 'manual'
+
+export type PayoutStatus = 'pending' | 'requested' | 'completed'
+
 export type Collection = {
   id: string
   slug: string
   organizer_id: string
   title: string
   description: string | null
+  icon_slug: string | null
   amount_type: 'fixed' | 'suggested' | 'open'
   amount: number | null
   currency: string
@@ -19,6 +24,11 @@ export type Collection = {
   show_contributors: boolean
   allow_paying_for_others: boolean
   status: 'active' | 'closed'
+  archived: boolean
+  payout_trigger: PayoutTrigger
+  payout_status: PayoutStatus
+  payout_requested_at: string | null
+  payout_completed_at: string | null
   created_at: string
 }
 

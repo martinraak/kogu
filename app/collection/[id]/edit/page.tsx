@@ -1,20 +1,23 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { Collection } from '@/types'
-import { saveCollection, getProfile, saveProfile, generateSlug, generateId, saveParticipants, getCollectionById } from '@/lib/mock-data'
-import { formatIBAN, validateIBAN, copyToClipboard } from '@/lib/utils'
-import { getIconByKeywords } from '@/lib/3dicons'
+import { getCollectionById, saveCollection, getProfile, saveProfile, getParticipantsForCollection, saveParticipants } from '@/lib/mock-data'
+import { formatIBAN, validateIBAN } from '@/lib/utils'
 import { Illustration } from '@/components/Illustration'
 import { IconPicker } from '@/components/IconPicker'
 
-function NewCollectionForm() {
+export default function EditCollectionPage({ params }: { params: { id: string } }) {
+  const { id } = params
   const router = useRouter()
-  const searchParams = useSearchParams()
 
+  const [collection, setCollection] = useState<Collection | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Form state
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [amountType, setAmountType] = useState<'fixed' | 'suggested' | 'open'>('fixed')
@@ -28,41 +31,38 @@ function NewCollectionForm() {
   const [showIconPicker, setShowIconPicker] = useState(false)
   const [showToast, setShowToast] = useState(false)
 
-  // Duplicate state
-  const [duplicatedFrom, setDuplicatedFrom] = useState<string | null>(null)
-  const [showDuplicateBanner, setShowDuplicateBanner] = useState(false)
-
   // Bank account info
   const [hasIBAN, setHasIBAN] = useState(false)
   const [fullName, setFullName] = useState('')
   const [iban, setIban] = useState('')
   const [existingIBAN, setExistingIBAN] = useState('')
   const [existingName, setExistingName] = useState('')
+  const [ibanError, setIbanError] = useState('')
 
   useEffect(() => {
-    const titleParam = searchParams.get('title')
-    if (titleParam) {
-      setTitle(titleParam)
-    }
+    const c = getCollectionById(id)
+    if (c) {
+      // Redirect if collection is closed
+      if (c.status === 'closed') {
+        router.replace(`/collection/${id}`)
+        return
+      }
 
-    // Handle duplicate param
-    const duplicateId = searchParams.get('duplicate')
-    if (duplicateId) {
-      const original = getCollectionById(duplicateId)
-      if (original) {
-        setTitle(original.title)
-        setDescription(original.description || '')
-        setAmountType(original.amount_type)
-        setAmount(original.amount ? original.amount.toString() : '')
-        setShowContributors(original.show_contributors)
-        setAllowPayingForOthers(original.allow_paying_for_others)
-        setIconSlug(original.icon_slug)
-        // Don't copy deadline - user should set a new one
-        // Don't copy participants - might have changed
-        // Set payout trigger to manual by default for duplicates (original trigger may not apply)
-        setPayoutTrigger('manual')
-        setDuplicatedFrom(original.title)
-        setShowDuplicateBanner(true)
+      setCollection(c)
+      setTitle(c.title)
+      setDescription(c.description || '')
+      setAmountType(c.amount_type)
+      setAmount(c.amount ? c.amount.toString() : '')
+      setDeadline(c.deadline || '')
+      setShowContributors(c.show_contributors)
+      setAllowPayingForOthers(c.allow_paying_for_others)
+      setPayoutTrigger(c.payout_trigger)
+      setIconSlug(c.icon_slug)
+
+      // Load participants
+      const existingParticipants = getParticipantsForCollection(c.id)
+      if (existingParticipants.length > 0) {
+        setParticipants(existingParticipants.map(p => p.name).join('\n'))
       }
     }
 
@@ -73,7 +73,9 @@ function NewCollectionForm() {
       setExistingIBAN(profile.iban)
       setExistingName(profile.full_name)
     }
-  }, [searchParams])
+
+    setLoading(false)
+  }, [id, router])
 
   // Reset payout trigger if its dependency is removed
   useEffect(() => {
@@ -88,10 +90,10 @@ function NewCollectionForm() {
     }
   }, [deadline, amountType, amount, participants, payoutTrigger])
 
-  const [ibanError, setIbanError] = useState('')
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!collection) return
 
     // Validate amount for fixed/suggested types
     if (amountType !== 'open' && amount) {
@@ -119,64 +121,67 @@ function NewCollectionForm() {
       })
     }
 
-    const collectionId = generateId()
-
-    // Auto-detect icon from title if not manually set
-    const finalIconSlug = iconSlug || getIconByKeywords(title).slug
-
-    const newCollection: Collection = {
-      id: collectionId,
-      slug: generateSlug(title),
-      organizer_id: '1',
+    const updatedCollection: Collection = {
+      ...collection,
       title,
       description: description || null,
-      icon_slug: finalIconSlug,
+      icon_slug: iconSlug,
       amount_type: amountType,
       amount: amountType !== 'open' && amount ? parseFloat(amount) : null,
-      currency: 'EUR',
       deadline: deadline || null,
       show_contributors: showContributors,
       allow_paying_for_others: allowPayingForOthers,
-      status: 'active',
-      archived: false,
       payout_trigger: payoutTrigger,
-      payout_status: 'pending',
-      payout_requested_at: null,
-      payout_completed_at: null,
-      created_at: new Date().toISOString(),
     }
 
-    saveCollection(newCollection)
+    saveCollection(updatedCollection)
 
-    // Save participants if provided
+    // Update participants if changed
     if (participants.trim()) {
       const participantNames = participants.split('\n').map(name => name.trim()).filter(Boolean)
       if (participantNames.length > 0) {
-        saveParticipants(collectionId, participantNames)
+        saveParticipants(collection.id, participantNames)
       }
     }
-
-    // Copy shareable link to clipboard
-    const shareableLink = `${window.location.origin}/c/${newCollection.slug}`
-    copyToClipboard(shareableLink)
 
     // Show toast and redirect
     setShowToast(true)
     setTimeout(() => {
-      router.push(`/collection/${newCollection.id}`)
+      router.push(`/collection/${collection.id}`)
     }, 1500)
   }
 
   const maskedIBAN = existingIBAN ? `••••${existingIBAN.slice(-4)}` : ''
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-kogu-cream flex items-center justify-center">
+        <div className="animate-pulse text-kogu-muted">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!collection) {
+    return (
+      <div className="min-h-screen bg-kogu-cream flex items-center justify-center px-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-medium text-kogu-charcoal mb-2">Collection not found</h1>
+          <Link href="/dashboard" className="text-kogu-forest hover:underline">
+            Go to dashboard
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-kogu-cream">
       <header className="sticky top-0 bg-kogu-cream/80 backdrop-blur-sm border-b border-kogu-pending/30 px-6 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <Link href="/" className="text-kogu-forest font-medium">
-            ← Back
+          <Link href={`/collection/${id}`} className="text-kogu-forest font-medium">
+            ← Cancel
           </Link>
-          <span className="text-kogu-muted text-sm">New collection</span>
+          <span className="text-kogu-muted text-sm">Edit collection</span>
         </div>
       </header>
 
@@ -186,33 +191,6 @@ function NewCollectionForm() {
           animate={{ opacity: 1, y: 0 }}
           className="max-w-2xl mx-auto"
         >
-          {/* Duplicate banner */}
-          <AnimatePresence>
-            {showDuplicateBanner && duplicatedFrom && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-6"
-              >
-                <div className="bg-kogu-forest/10 border border-kogu-forest/20 rounded-lg px-4 py-3 flex items-center justify-between">
-                  <p className="text-sm text-kogu-charcoal">
-                    Duplicated from <span className="font-medium">{duplicatedFrom}</span> · Adjust details and set a new deadline
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowDuplicateBanner(false)}
-                    className="text-kogu-muted hover:text-kogu-charcoal transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Title with Icon */}
             <div className="bg-white rounded-xl p-6 shadow-sm">
@@ -536,9 +514,9 @@ function NewCollectionForm() {
               type="submit"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="w-full h-14 bg-kogu-coral text-white text-lg font-medium rounded-lg shadow-sm hover:shadow-md transition-shadow"
+              className="w-full h-14 bg-kogu-forest text-white text-lg font-medium rounded-lg shadow-sm hover:shadow-md transition-shadow"
             >
-              Create collection
+              Save changes
             </motion.button>
           </form>
         </motion.div>
@@ -553,8 +531,7 @@ function NewCollectionForm() {
             exit={{ opacity: 0, y: 50 }}
             className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-kogu-charcoal text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3"
           >
-            <span>Collection created! Link copied to clipboard</span>
-            <span className="text-xl">📋</span>
+            <span>Changes saved!</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -567,17 +544,5 @@ function NewCollectionForm() {
         selectedSlug={iconSlug}
       />
     </div>
-  )
-}
-
-export default function NewCollectionPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-kogu-cream flex items-center justify-center">
-        <div className="animate-pulse text-kogu-muted">Loading...</div>
-      </div>
-    }>
-      <NewCollectionForm />
-    </Suspense>
   )
 }

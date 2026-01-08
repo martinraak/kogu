@@ -1,10 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 
+const isDev = process.env.NODE_ENV === 'development'
+
 export default function LoginPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
 
@@ -13,6 +17,11 @@ export default function LoginPage() {
     if (email) {
       setSent(true)
     }
+  }
+
+  const handleDevLogin = () => {
+    // In dev mode, just redirect to dashboard
+    router.push('/dashboard')
   }
 
   return (
@@ -72,6 +81,21 @@ export default function LoginPage() {
                   Send magic link
                 </motion.button>
               </form>
+
+              {/* Dev mode quick login */}
+              {isDev && (
+                <div className="mt-4 pt-4 border-t border-kogu-warm">
+                  <motion.button
+                    type="button"
+                    onClick={handleDevLogin}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full h-12 bg-kogu-charcoal text-white font-medium rounded-lg text-sm"
+                  >
+                    Dev: Skip to Dashboard →
+                  </motion.button>
+                </div>
+              )}
             </>
           )}
         </div>

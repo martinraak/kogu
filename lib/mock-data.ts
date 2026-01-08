@@ -15,6 +15,7 @@ export const mockCollections: Collection[] = [
     organizer_id: '1',
     title: "Mrs. Kask's Birthday Gift",
     description: "Let's get her something nice for her birthday on Dec 15th",
+    icon_slug: 'gift-box',
     amount_type: 'fixed',
     amount: 15,
     currency: 'EUR',
@@ -22,6 +23,11 @@ export const mockCollections: Collection[] = [
     show_contributors: true,
     allow_paying_for_others: true,
     status: 'active',
+    archived: false,
+    payout_trigger: 'deadline',
+    payout_status: 'pending',
+    payout_requested_at: null,
+    payout_completed_at: null,
     created_at: '2025-01-01T00:00:00Z'
   },
   {
@@ -30,6 +36,7 @@ export const mockCollections: Collection[] = [
     organizer_id: '1',
     title: 'Spring Class Trip',
     description: 'Bus and entry tickets to Estonian Open Air Museum',
+    icon_slug: 'travel',
     amount_type: 'fixed',
     amount: 25,
     currency: 'EUR',
@@ -37,6 +44,11 @@ export const mockCollections: Collection[] = [
     show_contributors: true,
     allow_paying_for_others: false,
     status: 'active',
+    archived: false,
+    payout_trigger: 'deadline',
+    payout_status: 'pending',
+    payout_requested_at: null,
+    payout_completed_at: null,
     created_at: '2025-01-02T00:00:00Z'
   }
 ]

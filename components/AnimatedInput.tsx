@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 
-const placeholders = [
+export const placeholders = [
   "teacher's birthday gift",
   "class trip to the zoo",
   "end of year present",
@@ -11,12 +11,22 @@ const placeholders = [
   "coach appreciation gift",
 ]
 
+// Map placeholders to icon slugs
+export const placeholderIcons: Record<string, string> = {
+  "teacher's birthday gift": 'gift-box',
+  "class trip to the zoo": 'travel',
+  "end of year present": 'medal',
+  "school supplies fund": 'book',
+  "coach appreciation gift": 'trophy',
+}
+
 interface AnimatedInputProps {
   value: string
   onChange: (value: string) => void
+  onPlaceholderChange?: (placeholder: string) => void
 }
 
-export function AnimatedInput({ value, onChange }: AnimatedInputProps) {
+export function AnimatedInput({ value, onChange, onPlaceholderChange }: AnimatedInputProps) {
   const [placeholderText, setPlaceholderText] = useState('')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isFocused, setIsFocused] = useState(false)
@@ -78,10 +88,13 @@ export function AnimatedInput({ value, onChange }: AnimatedInputProps) {
       }
     }
 
+    // Notify about current placeholder
+    onPlaceholderChange?.(currentPlaceholder)
+
     animate()
 
     return clearAnimation
-  }, [currentIndex, isFocused, value, clearAnimation])
+  }, [currentIndex, isFocused, value, clearAnimation, onPlaceholderChange])
 
   // Cleanup on unmount
   useEffect(() => {

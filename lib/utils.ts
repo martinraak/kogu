@@ -39,6 +39,18 @@ export function formatDate(dateString: string): string {
   })
 }
 
+export function formatDateTime(dateString: string): string {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }) + ' at ' + date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text)
@@ -76,6 +88,3 @@ export function validateIBAN(iban: string): boolean {
   return /^[A-Z]{2}[0-9]{18}$/.test(cleaned)
 }
 
-export function validateEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-}

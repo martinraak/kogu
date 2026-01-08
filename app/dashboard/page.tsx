@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { Collection, Payment, Participant } from '@/types'
 import { getCollections, getPaymentsForCollection, getParticipantsForCollection } from '@/lib/mock-data'
 import { getDeadlineInfo } from '@/lib/utils'
+import { Illustration } from '@/components/Illustration'
+import { DEFAULT_PARTICIPANT_COUNT } from '@/lib/constants'
 
 export default function DashboardPage() {
   const [collections, setCollections] = useState<Collection[]>([])
@@ -55,7 +57,7 @@ export default function DashboardPage() {
 
       <main className="px-6 py-8">
         <div className="max-w-4xl mx-auto">
-          {collections.length === 0 ? (
+          {collections.filter(c => !c.archived).length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -90,14 +92,14 @@ export default function DashboardPage() {
             </motion.div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              {collections.map((collection, index) => {
+              {collections.filter(c => !c.archived).map((collection, index) => {
                 const payments = paymentsMap[collection.id] || []
                 const participants = participantsMap[collection.id] || []
                 const completedPayments = payments.filter((p) => p.status === 'completed')
                 const totalCollected = completedPayments.reduce((sum, p) => sum + p.amount, 0)
                 const deadlineInfo = getDeadlineInfo(collection.deadline)
 
-                const participantCount = participants.length || 10 // Default to 10 if no participants
+                const participantCount = participants.length || DEFAULT_PARTICIPANT_COUNT
                 const targetAmount = collection.amount ? collection.amount * participantCount : totalCollected
                 const progressPercent =
                   targetAmount > 0 ? Math.min((totalCollected / targetAmount) * 100, 100) : 0
@@ -112,17 +114,28 @@ export default function DashboardPage() {
                   >
                     <Link href={`/collection/${collection.id}`}>
                       <div className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-                        <div className="flex items-start justify-between mb-3">
-                          <h3 className="text-lg font-medium text-kogu-charcoal">{collection.title}</h3>
-                          {collection.status === 'active' ? (
-                            <span className="px-2 py-1 bg-green-50 text-kogu-success text-xs font-medium rounded-full">
-                              Active
-                            </span>
-                          ) : (
-                            <span className="px-2 py-1 bg-kogu-warm text-kogu-muted text-xs font-medium rounded-full">
-                              Closed
-                            </span>
-                          )}
+                        <div className="flex items-start gap-4 mb-3">
+                          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-kogu-warm flex items-center justify-center">
+                            <Illustration
+                              slug={collection.icon_slug}
+                              title={collection.title}
+                              size="sm"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="text-lg font-medium text-kogu-charcoal truncate">{collection.title}</h3>
+                              {collection.status === 'active' ? (
+                                <span className="flex-shrink-0 px-2 py-1 bg-green-50 text-kogu-success text-xs font-medium rounded-full">
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="flex-shrink-0 px-2 py-1 bg-kogu-warm text-kogu-muted text-xs font-medium rounded-full">
+                                  Closed
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         {/* Progress */}
@@ -139,7 +152,7 @@ export default function DashboardPage() {
 
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-kogu-muted">
-                            {completedPayments.length}/{participantCount} paid · €{totalCollected.toFixed(0)}
+                            {completedPayments.length} paid · €{totalCollected.toFixed(0)}
                           </p>
                           {deadlineInfo && (
                             <span

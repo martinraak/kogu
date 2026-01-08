@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { Collection, Payment } from '@/types'
 import { getCollectionBySlug, getPaymentsForCollection, savePayment, generateId, getProfile, getParticipantsForCollection } from '@/lib/mock-data'
 import { getDeadlineInfo } from '@/lib/utils'
+import { Illustration } from '@/components/Illustration'
 
 const banks = [
   { id: 'swedbank', name: 'Swedbank', color: '#FF6600' },
@@ -17,6 +19,7 @@ const banks = [
 
 export default function ContributorPage({ params }: { params: { slug: string } }) {
   const { slug } = params
+  const router = useRouter()
   const [collection, setCollection] = useState<Collection | null>(null)
   const [payments, setPayments] = useState<Payment[]>([])
   const [participantCount, setParticipantCount] = useState(0)
@@ -33,6 +36,16 @@ export default function ContributorPage({ params }: { params: { slug: string } }
   const [selectedBank, setSelectedBank] = useState<string | null>(null)
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success'>('idle')
   const [message, setMessage] = useState('')
+
+  // Post-payment state
+  const [paymentCompleted, setPaymentCompleted] = useState(false)
+  const [lastPaymentData, setLastPaymentData] = useState<{
+    payerName: string
+    payerEmail: string
+    amount: string
+    payingFor: string[]
+  } | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   useEffect(() => {
     const c = getCollectionBySlug(slug)
@@ -52,6 +65,15 @@ export default function ContributorPage({ params }: { params: { slug: string } }
 
   const handlePayClick = () => {
     if (!payerName.trim()) return
+
+    // Validate amount for non-fixed collections
+    if (collection?.amount_type !== 'fixed') {
+      const parsedAmount = parseFloat(amount)
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        return
+      }
+    }
+
     setShowBankSelector(true)
   }
 
@@ -115,7 +137,15 @@ export default function ContributorPage({ params }: { params: { slug: string } }
     savePayment(newPayment)
     setPayments([...payments, newPayment])
 
-    // Reset
+    // Save last payment data for potential re-payment
+    setLastPaymentData({
+      payerName,
+      payerEmail,
+      amount,
+      payingFor: [...payingFor],
+    })
+
+    // Reset modal but show success card
     setShowBankSelector(false)
     setSelectedBank(null)
     setPaymentStatus('idle')
@@ -123,6 +153,35 @@ export default function ContributorPage({ params }: { params: { slug: string } }
     setPayerEmail('')
     setMessage('')
     setPayingFor([''])
+    setPaymentCompleted(true)
+  }
+
+  const handleMakeAnotherPayment = () => {
+    // Prefill form with last payment data
+    if (lastPaymentData) {
+      setPayerName(lastPaymentData.payerName)
+      setPayerEmail(lastPaymentData.payerEmail)
+      if (collection?.amount_type !== 'fixed') {
+        setAmount(lastPaymentData.amount)
+      }
+      setPayingFor(lastPaymentData.payingFor.length > 0 ? lastPaymentData.payingFor : [''])
+    }
+    setPaymentCompleted(false)
+  }
+
+  const handleStartCollecting = () => {
+    router.push('/new')
+  }
+
+  const handleCopyLink = async () => {
+    const link = `${window.location.origin}/c/${slug}`
+    try {
+      await navigator.clipboard.writeText(link)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy link:', err)
+    }
   }
 
   if (loading) {
@@ -139,6 +198,22 @@ export default function ContributorPage({ params }: { params: { slug: string } }
         <div className="text-center">
           <h1 className="text-2xl font-medium text-kogu-charcoal mb-2">Collection not found</h1>
           <p className="text-kogu-muted">This link may be incorrect or the collection may have been closed.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (collection.status === 'closed') {
+    return (
+      <div className="min-h-screen bg-kogu-cream flex items-center justify-center px-6">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-kogu-warm rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-kogu-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-medium text-kogu-charcoal mb-2">Collection closed</h1>
+          <p className="text-kogu-muted">This collection is no longer accepting payments.</p>
         </div>
       </div>
     )
@@ -165,11 +240,21 @@ export default function ContributorPage({ params }: { params: { slug: string } }
         >
           {/* Collection Card */}
           <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
-            <h1 className="text-2xl font-medium text-kogu-charcoal mb-2">{collection.title}</h1>
-
-            {collection.description && (
-              <p className="text-kogu-muted mb-4">{collection.description}</p>
-            )}
+            <div className="flex items-start gap-4 mb-3">
+              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-kogu-warm flex items-center justify-center">
+                <Illustration
+                  slug={collection.icon_slug}
+                  title={collection.title}
+                  size="md"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-medium text-kogu-charcoal">{collection.title}</h1>
+                {collection.description && (
+                  <p className="text-kogu-muted mt-1">{collection.description}</p>
+                )}
+              </div>
+            </div>
 
             <p className="text-sm text-kogu-muted mb-4">Organized by {profile.full_name?.split(' ')[0] || 'Mari'}</p>
 
@@ -234,122 +319,194 @@ export default function ContributorPage({ params }: { params: { slug: string } }
             )}
           </div>
 
-          {/* Payment Form */}
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-medium text-kogu-charcoal mb-4">Make a payment</h2>
-
-            {/* Amount */}
-            {collection.amount_type === 'fixed' ? (
-              <div className="text-center py-4 mb-4 bg-kogu-warm rounded-lg">
-                <span className="text-3xl font-medium text-kogu-charcoal">€{collection.amount}</span>
+          {/* Payment Form or Success Card */}
+          {paymentCompleted ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-xl p-6 shadow-sm"
+            >
+              <div className="text-center mb-6">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', damping: 10, stiffness: 200 }}
+                  className="w-16 h-16 bg-kogu-success rounded-full flex items-center justify-center mx-auto mb-4"
+                >
+                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </motion.div>
+                <h2 className="text-xl font-medium text-kogu-charcoal mb-2">Payment successful!</h2>
+                <p className="text-kogu-muted">Thank you for your contribution.</p>
               </div>
-            ) : (
+
+              <div className="space-y-3">
+                <motion.button
+                  onClick={handleMakeAnotherPayment}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full h-14 bg-kogu-coral text-white text-lg font-medium rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Make one more payment
+                </motion.button>
+
+                <motion.button
+                  onClick={handleStartCollecting}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full h-14 bg-kogu-forest text-white text-lg font-medium rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Start collecting money yourself
+                </motion.button>
+
+                <motion.button
+                  onClick={handleCopyLink}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full h-14 bg-kogu-warm text-kogu-charcoal text-lg font-medium rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  {linkCopied ? (
+                    <>
+                      <svg className="w-5 h-5 text-kogu-success" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      Link copied!
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>
+                      Help collect and share this link
+                    </>
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          ) : (
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h2 className="text-lg font-medium text-kogu-charcoal mb-4">Make a payment</h2>
+
+              {/* Amount */}
+              {collection.amount_type === 'fixed' ? (
+                <div className="text-center py-4 mb-4 bg-kogu-warm rounded-lg">
+                  <span className="text-3xl font-medium text-kogu-charcoal">€{collection.amount}</span>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-kogu-charcoal mb-2">
+                    Amount
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-kogu-muted text-lg">€</span>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder={collection.amount?.toString() || '15'}
+                      min="0"
+                      step="0.01"
+                      className="w-full h-12 pl-10 pr-4 text-lg border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
+                    />
+                  </div>
+                  {collection.amount_type === 'suggested' && (
+                    <p className="text-sm text-kogu-muted mt-1">Suggested: €{collection.amount}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Name */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-kogu-charcoal mb-2">Your name</label>
+                <input
+                  type="text"
+                  value={payerName}
+                  onChange={(e) => setPayerName(e.target.value)}
+                  placeholder="Anna"
+                  required
+                  className="w-full h-12 px-4 text-base border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
+                />
+              </div>
+
+              {/* Email */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-kogu-charcoal mb-2">
-                  Amount
+                  Email <span className="text-kogu-muted font-normal">(optional)</span>
                 </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-kogu-muted text-lg">€</span>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder={collection.amount?.toString() || '15'}
-                    min="0"
-                    step="0.01"
-                    className="w-full h-12 pl-10 pr-4 text-lg border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
-                  />
-                </div>
-                {collection.amount_type === 'suggested' && (
-                  <p className="text-sm text-kogu-muted mt-1">Suggested: €{collection.amount}</p>
-                )}
+                <input
+                  type="email"
+                  value={payerEmail}
+                  onChange={(e) => setPayerEmail(e.target.value)}
+                  placeholder="For your receipt"
+                  className="w-full h-12 px-4 text-base border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
+                />
               </div>
-            )}
 
-            {/* Name */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-kogu-charcoal mb-2">Your name</label>
-              <input
-                type="text"
-                value={payerName}
-                onChange={(e) => setPayerName(e.target.value)}
-                placeholder="Anna"
-                required
-                className="w-full h-12 px-4 text-base border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
-              />
-            </div>
-
-            {/* Email */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-kogu-charcoal mb-2">
-                Email <span className="text-kogu-muted font-normal">(optional)</span>
-              </label>
-              <input
-                type="email"
-                value={payerEmail}
-                onChange={(e) => setPayerEmail(e.target.value)}
-                placeholder="For your receipt"
-                className="w-full h-12 px-4 text-base border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
-              />
-            </div>
-
-            {/* Paying for others */}
-            {collection.allow_paying_for_others && (
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-kogu-charcoal mb-2">
-                  Who are you paying for? <span className="text-kogu-muted font-normal">(optional)</span>
-                </label>
-                <div className="space-y-2">
-                  {payingFor.map((name, index) => (
-                    <div key={index} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => handlePayingForChange(index, e.target.value)}
-                        placeholder="Child's name"
-                        className="flex-1 h-12 px-4 text-base border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
-                      />
-                      {payingFor.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemovePayingFor(index)}
-                          className="w-12 h-12 flex items-center justify-center text-kogu-muted hover:text-kogu-charcoal transition-colors"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
+              {/* Paying for others */}
+              {collection.allow_paying_for_others && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-kogu-charcoal mb-2">
+                    Who are you paying for? <span className="text-kogu-muted font-normal">(optional)</span>
+                  </label>
+                  <div className="space-y-2">
+                    {payingFor.map((name, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) => handlePayingForChange(index, e.target.value)}
+                          placeholder="Child's name"
+                          className="flex-1 h-12 px-4 text-base border border-kogu-pending rounded-lg focus:outline-none focus:ring-2 focus:ring-kogu-forest focus:border-transparent"
+                        />
+                        {payingFor.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePayingFor(index)}
+                            className="w-12 h-12 flex items-center justify-center text-kogu-muted hover:text-kogu-charcoal transition-colors"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddPayingFor}
+                    className="mt-2 text-sm text-kogu-forest hover:underline"
+                  >
+                    + Add another
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAddPayingFor}
-                  className="mt-2 text-sm text-kogu-forest hover:underline"
-                >
-                  + Add another
-                </button>
-              </div>
-            )}
-
-            {!collection.allow_paying_for_others && <div className="mb-2" />}
-
-            {/* Pay Button */}
-            <motion.button
-              onClick={handlePayClick}
-              disabled={!payerName.trim() || !totalDisplayAmount}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full h-14 bg-kogu-coral text-white text-lg font-medium rounded-lg shadow-sm hover:shadow-md transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {payingForCount > 1 && baseAmount ? (
-                <>Pay €{totalDisplayAmount} ({payingForCount} × €{baseAmount}) →</>
-              ) : (
-                <>Pay €{totalDisplayAmount || 0} →</>
               )}
-            </motion.button>
-          </div>
+
+              {!collection.allow_paying_for_others && <div className="mb-2" />}
+
+              {/* Pay Button */}
+              <motion.button
+                onClick={handlePayClick}
+                disabled={!payerName.trim() || !totalDisplayAmount}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full h-14 bg-kogu-coral text-white text-lg font-medium rounded-lg shadow-sm hover:shadow-md transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {payingForCount > 1 && baseAmount ? (
+                  <>Pay €{totalDisplayAmount} ({payingForCount} × €{baseAmount}) →</>
+                ) : (
+                  <>Pay €{totalDisplayAmount || 0} →</>
+                )}
+              </motion.button>
+            </div>
+          )}
         </motion.div>
       </main>
 

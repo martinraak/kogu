@@ -1,14 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { AnimatedInput } from '@/components/AnimatedInput'
+import { AnimatedInput, placeholderIcons } from '@/components/AnimatedInput'
+import { AnimatedIllustration } from '@/components/Illustration'
 import Link from 'next/link'
 
 export default function LandingPage() {
   const [title, setTitle] = useState('')
+  const [currentIconSlug, setCurrentIconSlug] = useState<string>('gift-box')
   const router = useRouter()
+
+  const handlePlaceholderChange = useCallback((placeholder: string) => {
+    const iconSlug = placeholderIcons[placeholder] || 'money-bag'
+    setCurrentIconSlug(iconSlug)
+  }, [])
 
   const handleStart = () => {
     if (title.trim()) {
@@ -40,12 +47,21 @@ export default function LandingPage() {
           transition={{ duration: 0.5 }}
           className="w-full max-w-2xl text-center"
         >
+          {/* Animated illustration */}
+          <div className="flex justify-center mb-6">
+            <AnimatedIllustration slug={currentIconSlug} size="xl" />
+          </div>
+
           <h1 className="text-3xl md:text-4xl font-medium text-kogu-charcoal mb-2">
             Start collecting money for
           </h1>
 
           <div className="mb-8">
-            <AnimatedInput value={title} onChange={setTitle} />
+            <AnimatedInput
+              value={title}
+              onChange={setTitle}
+              onPlaceholderChange={handlePlaceholderChange}
+            />
           </div>
 
           <motion.button
